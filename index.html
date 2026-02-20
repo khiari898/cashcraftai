@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="بوابة دفع تجريبية عبر Pi داخل Pi Browser." />
+  <meta name="theme-color" content="#ffffff" />
+  <title>اختبار دفع Pi</title>
+
+  <!-- Pi SDK -->
+  <script src="https://sdk.minepi.com/pi-sdk.js"></script>
+
+  <style>
+    body {
+
+      text-align: center;
+    }
+
+    .container {
+      width: min(720px, 100%);
+    }
+
+
+
+
+
+    #user {
+      margin-top: 10px;
+      font-size: 14px;
+      color: rgba(15, 23, 42, 0.72);
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: 28px;
+      letter-spacing: -0.02em;
+    }
+
+    p {
+      margin: 0;
+      color: rgba(15, 23, 42, 0.70);
+      font-size: 16px;
+      line-height: 1.65;
+    }
+
+    .amount {
+      margin-top: 14px;
+      font-size: 18px;
+      color: rgba(15, 23, 42, 0.92);
+    }
+
+    button {
+      margin-top: 22px;
+      width: 100%;
+      border: none;
+      border-radius: 14px;
+      padding: 14px 18px;
+      font-size: 18px;
+      font-weight: 800;
+      color: #ffffff;
+      background: linear-gradient(135deg, #38bdf8, #a78bfa);
+      box-shadow: 0 14px 40px rgba(2, 132, 199, 0.22);
+      transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+      cursor: pointer;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 18px 60px rgba(2, 132, 199, 0.26);
+    }
+
+    button:active {
+      transform: translateY(0px);
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    #status {
+      margin-top: 16px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      background: rgba(248, 250, 252, 0.9);
+      border: 1px solid rgba(15, 23, 42, 0.10);
+      color: rgba(15, 23, 42, 0.88);
+      font-size: 14px;
+      line-height: 1.7;
+      min-height: 52px;
+      white-space: pre-line;
+    }
+
+    .brand {
+      margin-top: 18px;
+      font-size: 12px;
+      color: rgba(15, 23, 42, 0.45);
+      letter-spacing: 0.03em;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <div class="card">
+
+      <h1>اختبار دفع عبر Pi</h1>
+      <p class="amount">قيمة الاختبار: <strong>0.01 Pi</strong></p>
+
+      <div id="user"></div>
+
+      <button id="payBtn" type="button" onclick="pay()">ادفع عبر Pi</button>
+
+      <div id="status"></div>
+
+
+    </div>
+  </div>
+
+  <script>
+    // تهيئة Pi SDK
+    const params = new URLSearchParams(window.location.search);
+    const sandboxParam = params.get("sandbox");
+    let rememberedSandbox = null;
+    try {
+      if (sandboxParam === "1" || sandboxParam === "true") {
+        localStorage.setItem("pi_sandbox", "1");
+      }
+      if (sandboxParam === "0" || sandboxParam === "false") {
+        localStorage.setItem("pi_sandbox", "0");
+      }
+      rememberedSandbox = localStorage.getItem("pi_sandbox");
+    } catch (e) {
+      rememberedSandbox = null;
+    }
+
+    const ref = (document.referrer || "").toLowerCase();
+    const isFromSandboxUi = ref.includes("sandbox.minepi.com");
+
+    if (!sandboxParam && rememberedSandbox !== "1" && isFromSandboxUi) {
+      try {
+        const next = new URL(window.location.href);
+        next.searchParams.set("sandbox", "1");
+        window.location.replace(next.toString());
+      } catch (e) {
+      }
+    }
+
+    const isSandbox =
+      sandboxParam === "1" ||
+      sandboxParam === "true" ||
+      rememberedSandbox === "1" ||
+      isFromSandboxUi ||
+      window.location.hostname === "sandbox.minepi.com" ||
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1";
+
+    Pi.init({
+      version: "2.0",
+      sandbox: isSandbox
+    });
+
+    let accessToken = null;
+    let username = "";
+    let hasPaymentsScope = false;
+
+    function setStatus(message) {
+      const status = document.getElementById("status");
+      status.innerText = message;
+    }
+
+    function setUser(name) {
+      const el = document.getElementById("user");
+      if (!el) return;
+      el.innerText = name ? `مرحباً ${name}` : "";
+    }
+
+    async function apiPost(path, payload) {
+      const isNetlify = window.location.hostname.endsWith(".netlify.app") || window.location.hostname.endsWith(".netlify.live");
+      const functionMap = {
+        "/payment/approve": "/.netlify/functions/payment-approve",
+        "/payment/complete": "/.netlify/functions/payment-complete",
+        "/payment/cancel": "/.netlify/functions/payment-cancel"
+      };
+      const url = isNetlify && functionMap[path] ? functionMap[path] : path;
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload || {})
+      });
+
+      const text = await response.text();
+      let data = null;
+      try {
+        data = text ? JSON.parse(text) : null;
+      } catch (e) {
+        data = text;
+      }
+
+      if (!response.ok) {
+        throw new Error(typeof data === "string" ? data : JSON.stringify(data));
+      }
+
+      return data;
+    }
+
+    async function ensureAuth(scopes) {
+      const requestedScopes = Array.isArray(scopes) && scopes.length ? scopes : ["username"];
+      const needsPayments = requestedScopes.includes("payments");
+
+      if (accessToken && (!needsPayments || hasPaymentsScope)) {
+        return { accessToken, username, hasPaymentsScope };
+      }
+
+      const auth = await Pi.authenticate(requestedScopes, async function (payment) {
+        try {
+          const paymentId = payment && payment.identifier;
+          const txid = payment && payment.transaction && payment.transaction.txid;
+          if (paymentId && txid) {
+            await apiPost("/payment/complete", { paymentId: paymentId, txid: txid });
+          } else if (paymentId) {
+            await apiPost("/payment/cancel", { paymentId: paymentId });
+          }
+        } catch (err) {
+          console.error(err);
+        }
+      });
+
+      accessToken = auth && auth.accessToken ? auth.accessToken : null;
+      username = auth && auth.user && auth.user.username ? auth.user.username : "";
+      if (needsPayments) {
+        hasPaymentsScope = true;
+      }
+      setUser(username);
+      return { accessToken, username, hasPaymentsScope };
+    }
+
+    async function autoAuthOnLoad() {
+      const btn = document.getElementById("payBtn");
+      if (btn) btn.disabled = true;
+      setStatus("جاري جلب اسم المستخدم...");
+      try {
+        await ensureAuth(["username"]);
+        setStatus("جاهز");
+      } catch (e) {
+        console.error(e);
+        setUser("");
+        setStatus("افتح الصفحة داخل Pi Browser ثم امنح الإذن لعرض اسمك");
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    async function pay() {
+      const btn = document.getElementById("payBtn");
+      btn.disabled = true;
+      setStatus("جاري تسجيل الدخول عبر Pi...");
+
+      try {
+        await ensureAuth(["username", "payments"]);
+        setStatus((username ? `مرحباً ${username}\n` : "") + "جاري تجهيز الدفع...");
+
+        Pi.createPayment(
+          {
+            amount: 0.01,
+            memo: "Quick Payment Test",
+            metadata: { purpose: "test" }
+          },
+          {
+            onReadyForServerApproval: async function (paymentId) {
+              try {
+                setStatus("تم إنشاء الدفع\nجاري موافقة السيرفر...");
+                await apiPost("/payment/approve", { paymentId: paymentId, accessToken: accessToken });
+              } catch (err) {
+                console.error(err);
+                setStatus("تعذر موافقة السيرفر على الدفع.\nشغّل السيرفر واضبط PI_SERVER_API_KEY.");
+                btn.disabled = false;
+              }
+            },
+            onReadyForServerCompletion: async function (paymentId, txid) {
+              try {
+                setStatus("تم إرسال المعاملة\nجاري تأكيد الدفع من السيرفر...");
+                await apiPost("/payment/complete", { paymentId: paymentId, txid: txid, accessToken: accessToken });
+                setStatus("تم الدفع بنجاح");
+              } catch (err) {
+                console.error(err);
+                setStatus("فشل إكمال الدفع من السيرفر.\nلا تعتبر الدفع ناجحاً قبل نجاح /complete.");
+              } finally {
+                btn.disabled = false;
+              }
+            },
+            onCancel: function (paymentId) {
+              setStatus("تم إلغاء الدفع");
+              btn.disabled = false;
+              if (paymentId) {
+                apiPost("/payment/cancel", { paymentId: paymentId }).catch(function () { });
+              }
+            },
+            onError: function (error) {
+              console.error(error);
+              setStatus("حدث خطأ");
+              btn.disabled = false;
+            }
+          }
+        );
+      } catch (e) {
+        console.error(e);
+        setStatus("فشل تسجيل الدخول أو بدء الدفع\nافتح الصفحة داخل Pi Browser وتأكد من الصلاحيات.");
+        const btn = document.getElementById("payBtn");
+        btn.disabled = false;
+      }
+    }
+
+    autoAuthOnLoad();
+  </script>
+
+</body>
+</html>
