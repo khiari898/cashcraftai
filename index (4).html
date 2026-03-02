@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b1020" />
+    <title>Pi Payment Support</title>
+    <link rel="icon" href="./logo.jpg" type="image/jpeg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
+    <script src="https://sdk.minepi.com/pi-sdk.js"></script>
+    <script>
+      if (window.Pi && typeof window.Pi.init === "function") {
+        window.Pi.init({ version: "2.0", sandbox: false });
+      }
+    </script>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        background: #0b1020;
+        color: #fff;
+        font-family: 'Cairo', sans-serif;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+      header {
+        width: 100%;
+        background: rgba(11, 16, 32, 0.8);
+        backdrop-filter: blur(10px);
+        padding: 12px 25px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        box-sizing: border-box;
+        position: fixed;
+        top: 0;
+        z-index: 100;
+      }
+      .user-info {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .user-avatar {
+        width: 35px;
+        height: 35px;
+        background: #4f86ff;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        color: #0b1020;
+        font-size: 14px;
+      }
+      .user-text {
+        display: flex;
+        flex-direction: column;
+      }
+      .username {
+        font-size: 16px;
+        font-weight: 700;
+        color: #facc15;
+        line-height: 1.2;
+      }
+      .status {
+        font-size: 10px;
+        opacity: 0.5;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .pay-btn {
+        background: linear-gradient(135deg, #4f86ff 0%, #3b82f6 100%);
+        color: #fff;
+        border: none;
+        padding: 10px 24px;
+        font-size: 15px;
+        font-weight: 700;
+        border-radius: 50px;
+        cursor: pointer;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .pay-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+        background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+      }
+      .pay-btn:active {
+        transform: translateY(0);
+      }
+      .main-content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 100px 20px 40px;
+        text-align: center;
+      }
+      .hero-title {
+        font-size: clamp(32px, 8vw, 64px);
+        font-weight: 900;
+        margin: 0;
+        background: linear-gradient(to bottom, #fff 30%, rgba(255,255,255,0.5) 100%);
+        background-clip: text;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        letter-spacing: -1px;
+      }
+      .hero-subtitle {
+        font-size: clamp(16px, 4vw, 20px);
+        opacity: 0.6;
+        margin-top: 15px;
+        max-width: 600px;
+        line-height: 1.6;
+      }
+      .support-card {
+        margin-top: 50px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        padding: 30px;
+        border-radius: 30px;
+        backdrop-filter: blur(5px);
+      }
+      .pi-icon {
+        font-size: 40px;
+        margin-bottom: 10px;
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="user-info">
+        <div class="user-avatar" id="userAvatar">?</div>
+        <div class="user-text">
+          <div id="usernameDisplay" class="username">Guest</div>
+          <div id="statusDisplay" class="status">Connecting...</div>
+        </div>
+      </div>
+      <button id="payBtn" class="pay-btn">
+        <span>Support 1 Pi</span>
+      </button>
+    </header>
+    
+    <main class="main-content">
+      <!-- Empty main content as requested -->
+    </main>
+
+    <script>
+      (function() {
+        async function postJson(url, body) {
+          const r = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body || {}),
+          });
+          const txt = await r.text();
+          return { ok: r.ok, status: r.status, text: txt };
+        }
+
+        async function initPay() {
+          const userEl = document.getElementById('usernameDisplay');
+          const statusEl = document.getElementById('statusDisplay');
+          const btn = document.getElementById('payBtn');
+
+          if (!window.Pi) {
+            statusEl.textContent = "Pi SDK not found";
+            return;
+          }
+
+          try {
+            statusEl.textContent = "Authenticating...";
+            const auth = await window.Pi.authenticate(["username", "payments"], function(incomplete) {
+               console.log("Incomplete payment found", incomplete);
+            });
+            
+            const username = auth.user.username;
+            document.getElementById('userAvatar').textContent = username.charAt(0).toUpperCase();
+            userEl.textContent = username;
+            statusEl.textContent = "Ready";
+
+            btn.onclick = async () => {
+              try {
+                statusEl.textContent = "Creating payment...";
+                const paymentData = {
+                  amount: 1.0,
+                  memo: "Support Developer",
+                  metadata: { kind: "support" }
+                };
+
+                const callbacks = {
+                  onReadyForServerApproval: (id) => {
+                    statusEl.textContent = "Approving...";
+                    postJson("/.netlify/functions/pi-approve", { paymentId: id, accessToken: auth.accessToken })
+                      .then(res => statusEl.textContent = res.ok ? "Approved" : "Approve failed");
+                  },
+                  onReadyForServerCompletion: (id, txid) => {
+                    statusEl.textContent = "Completing...";
+                    postJson("/.netlify/functions/pi-complete", { paymentId: id, txid, accessToken: auth.accessToken })
+                      .then(res => statusEl.textContent = res.ok ? "Done! Thank you." : "Complete failed");
+                  },
+                  onCancel: () => statusEl.textContent = "Cancelled",
+                  onError: (err) => statusEl.textContent = "Error: " + err.message
+                };
+
+                window.Pi.createPayment(paymentData, callbacks);
+              } catch (e) {
+                statusEl.textContent = "Failed: " + e.message;
+              }
+            };
+          } catch (e) {
+            statusEl.textContent = "Auth failed: " + e.message;
+          }
+        }
+        
+        if (document.readyState === "loading") {
+          document.addEventListener("DOMContentLoaded", initPay);
+        } else {
+          initPay();
+        }
+      })();
+    </script>
+  </body>
+</html>
