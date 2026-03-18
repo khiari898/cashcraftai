@@ -1,26 +1,186 @@
-<main class="main-content" style="text-align:center; padding:40px; font-family:Arial;">
-  
-  <h1>💎 Support the Developer</h1>
-  <p>ادعمنا بـ 1 Pi وعاوننا باش نطورو المشروع 🚀</p>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Pi Payment App</title>
 
-  <div style="margin:20px auto; width:120px; height:120px; border-radius:50%; background:#eee; display:flex; align-items:center; justify-content:center; font-size:40px;">
-    <span id="userAvatar">?</span>
-  </div>
+  <!-- Pi SDK -->
+  <script src="https://sdk.minepi.com/pi-sdk.js"></script>
 
-  <h2 id="usernameDisplay">Guest</h2>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg, #6c2bd9, #9f7aea);
+      color: white;
+      text-align: center;
+    }
 
-  <p id="statusDisplay" style="margin:20px; color:gray;">Waiting...</p>
+    .main-content {
+      padding: 50px 20px;
+    }
 
-  <button id="payBtn" style="
-    background:#6c2bd9;
-    color:white;
-    border:none;
-    padding:15px 30px;
-    font-size:18px;
-    border-radius:10px;
-    cursor:pointer;
-  ">
-    💰 Pay 1 Pi
-  </button>
+    h1 {
+      font-size: 32px;
+      margin-bottom: 10px;
+    }
 
-</main>
+    p {
+      font-size: 18px;
+      color: #eee;
+    }
+
+    #userAvatar {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      background: white;
+      color: #6c2bd9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 50px;
+      margin: 30px auto;
+      font-weight: bold;
+    }
+
+    #usernameDisplay {
+      font-size: 24px;
+      margin-bottom: 10px;
+    }
+
+    #statusDisplay {
+      margin: 20px;
+      color: #ddd;
+    }
+
+    #payBtn {
+      background: white;
+      color: #6c2bd9;
+      border: none;
+      padding: 15px 40px;
+      font-size: 20px;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+
+    #payBtn:hover {
+      background: #eee;
+    }
+  </style>
+</head>
+
+<body>
+
+  <main class="main-content">
+    <h1>💎 Support the Developer</h1>
+    <p>ادعمنا بـ 1 Pi وعاوننا باش نطورو المشروع 🚀</p>
+
+    <div id="userAvatar">?</div>
+    <div id="usernameDisplay">Guest</div>
+
+    <div id="statusDisplay">Loading...</div>
+
+    <button id="payBtn">💰 Pay 1 Pi</button>
+  </main>
+
+  <script>
+    (function() {
+      async function postJson(url, body) {
+        const r = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body || {}),
+        });
+        const txt = await r.text();
+        return { ok: r.ok, status: r.status, text: txt };
+      }
+
+      async function initPay() {
+        const userEl = document.getElementById('usernameDisplay');
+        const statusEl = document.getElementById('statusDisplay');
+        const btn = document.getElementById('payBtn');
+
+        if (!window.Pi) {
+          statusEl.textContent = "Pi SDK not found";
+          return;
+        }
+
+        try {
+          statusEl.textContent = "Authenticating...";
+          
+          const auth = await window.Pi.authenticate(["username", "payments"], function(incomplete) {
+            console.log("Incomplete payment found", incomplete);
+          });
+
+          const username = auth.user.username;
+
+          document.getElementById('userAvatar').textContent = username.charAt(0).toUpperCase();
+          userEl.textContent = username;
+
+          statusEl.textContent = "Ready ✅";
+
+          btn.onclick = async () => {
+            try {
+              statusEl.textContent = "Creating payment...";
+
+              const paymentData = {
+                amount: 1.0,
+                memo: "Support Developer",
+                metadata: { kind: "support" }
+              };
+
+              const callbacks = {
+                onReadyForServerApproval: (id) => {
+                  statusEl.textContent = "Approving...";
+                  postJson("/.netlify/functions/pi-approve", {
+                    paymentId: id,
+                    accessToken: auth.accessToken
+                  }).then(res => {
+                    statusEl.textContent = res.ok ? "Approved ✅" : "Approve failed ❌";
+                  });
+                },
+
+                onReadyForServerCompletion: (id, txid) => {
+                  statusEl.textContent = "Completing...";
+                  postJson("/.netlify/functions/pi-complete", {
+                    paymentId: id,
+                    txid: txid,
+                    accessToken: auth.accessToken
+                  }).then(res => {
+                    statusEl.textContent = res.ok ? "Done! Thank you 💜" : "Complete failed ❌";
+                  });
+                },
+
+                onCancel: () => {
+                  statusEl.textContent = "Cancelled ❌";
+                },
+
+                onError: (err) => {
+                  statusEl.textContent = "Error: " + err.message;
+                }
+              };
+
+              window.Pi.createPayment(paymentData, callbacks);
+
+            } catch (e) {
+              statusEl.textContent = "Failed: " + e.message;
+            }
+          };
+
+        } catch (e) {
+          statusEl.textContent = "Auth failed: " + e.message;
+        }
+      }
+
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", initPay);
+      } else {
+        initPay();
+      }
+    })();
+  </script>
+
+</body>
+</html>
